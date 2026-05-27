@@ -1,0 +1,104 @@
+.page {
+    min-height: 100vh;
+    padding: 28px;
+    background: #f4f6f8;
+    color: #18212f;
+    font-family: Arial, sans-serif;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    align-items: flex-end;
+    margin-bottom: 24px;
+}
+
+.header h1 {
+    margin: 0 0 6px;
+    font-size: 30px;
+    font-weight: 700;
+}
+
+.header p {
+    margin: 0;
+    color: #667085;
+}
+
+.filter {
+    width: 280px;
+}
+
+.filter label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.kpi {
+    background: #ffffff;
+    border: 1px solid #d9e0e8;
+    border-radius: 8px;
+    padding: 18px;
+}
+
+.kpi span {
+    display: block;
+    color: #667085;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.kpi strong {
+    display: block;
+    font-size: 28px;
+}
+
+.charts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.charts > div {
+    background: #ffffff;
+    border: 1px solid #d9e0e8;
+    border-radius: 8px;
+}
+
+.charts > div:first-child {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 800px) {
+    .page {
+        padding: 18px;
+    }
+
+    .header {
+        display: block;
+    }
+
+    .filter {
+        width: 100%;
+        margin-top: 18px;
+    }
+
+    .kpi-grid,
+    .charts {
+        grid-template-columns: 1fr;
+    }
+
+    .charts > div:first-child {
+        grid-column: auto;
+    }
+}
+
