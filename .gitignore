@@ -9,3 +9,4 @@ venv/
 *.log
 *.pdf
 node_modules/
+SCRIPT_PRESENTATION_5_MIN.md
