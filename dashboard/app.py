@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 import sys
 
 import dash
-from dash import Input, Output, dcc, html
+from dash import Input, Output, State, ctx, dcc, html
 import mysql.connector
 import pandas as pd
 import plotly.express as px
@@ -45,16 +46,13 @@ def load_dashboard_data() -> pd.DataFrame:
 
 
 df = load_dashboard_data()
-segments = sorted(df["segment"].unique())
+segments = ["Champions", "Clients fideles", "Fort potentiel", "Nouveaux clients", "A developper", "Clients a risque"]
+channels = sorted(df["acquisition_channel"].unique())
+cities = sorted(df["city"].unique())
+rfm_min, rfm_max = int(df["rfm_score"].min()), int(df["rfm_score"].max())
+revenue_min = math.floor(float(df["monetary_value"].min()))
+revenue_max = math.ceil(float(df["monetary_value"].max()))
 
-segment_order = [
-    "Champions",
-    "Clients fideles",
-    "Fort potentiel",
-    "Nouveaux clients",
-    "A developper",
-    "Clients a risque",
-]
 segment_colors = {
     "Champions": "#149a7b",
     "Clients fideles": "#2563eb",
@@ -76,23 +74,20 @@ segment_actions = {
 def kpi_card(label: str, value_id: str, caption: str) -> html.Div:
     return html.Div(
         className="kpi-card",
-        children=[
-            html.Span(label, className="kpi-label"),
-            html.Strong(id=value_id),
-            html.Small(caption),
-        ],
+        children=[html.Span(label, className="kpi-label"), html.Strong(id=value_id), html.Small(caption)],
     )
 
 
-def chart_panel(title: str, subtitle: str, graph_id: str, extra_class: str) -> html.Div:
+def filter_group(label: str, control) -> html.Div:
+    return html.Div([html.Label(label), control], className="filter-group")
+
+
+def panel(title: str, subtitle: str, child, extra_class: str = "") -> html.Div:
     return html.Div(
-        className=f"panel chart-panel {extra_class}".strip(),
+        className=f"panel {extra_class}".strip(),
         children=[
-            html.Div(
-                className="panel-heading",
-                children=[html.Div([html.H2(title), html.P(subtitle)])],
-            ),
-            dcc.Graph(id=graph_id, className="chart", config={"displayModeBar": False}),
+            html.Div(className="panel-heading", children=[html.Div([html.H2(title), html.P(subtitle)])]),
+            child,
         ],
     )
 
@@ -103,6 +98,7 @@ app.title = "CRM RFM Command Center"
 app.layout = html.Div(
     className="page-shell",
     children=[
+        dcc.Store(id="cross-filter-store", data={"segment": None, "channel": None, "city": None}),
         html.Header(
             className="topbar",
             children=[
@@ -111,85 +107,138 @@ app.layout = html.Div(
                     children=[
                         html.Span("CRM Performance Monitor", className="eyebrow"),
                         html.H1(["Segmentation client ", html.Span("e-commerce", className="nowrap")]),
-                        html.P("Priorisation CRM a partir du scoring RFM, de la valeur client et des canaux d'acquisition."),
+                        html.P("Dashboard interactif RFM pour arbitrer les actions CRM par valeur, risque et canal."),
                     ],
                 ),
-                html.Div(
-                    className="filter-card",
-                    children=[
-                        html.Label("Vue segment"),
-                        dcc.Dropdown(
-                            id="segment-filter",
-                            options=[{"label": "Tous les segments", "value": "all"}]
-                            + [{"label": segment, "value": segment} for segment in segments],
-                            value="all",
-                            clearable=False,
-                        ),
-                    ],
-                ),
+                html.Div(id="active-filter-strip", className="active-filter-strip"),
             ],
         ),
         html.Main(
-            className="content",
+            className="dashboard-layout",
             children=[
-                html.Section(
-                    className="kpi-grid",
+                html.Aside(
+                    className="filter-sidebar",
                     children=[
-                        kpi_card("Clients", "kpi-clients", "Base analysee"),
-                        kpi_card("CA total", "kpi-revenue", "Valeur transactionnelle"),
-                        kpi_card("CA moyen/client", "kpi-average", "Monetary moyen"),
-                        kpi_card("Recence moyenne", "kpi-recency", "Dernier achat"),
+                        html.Div(
+                            className="filter-header",
+                            children=[
+                                html.H2("Filtres"),
+                                html.Button("Effacer les clics", id="clear-cross-filter", n_clicks=0, className="ghost-button"),
+                            ],
+                        ),
+                        filter_group(
+                            "Segments",
+                            dcc.Dropdown(
+                                id="segment-filter",
+                                options=[{"label": value, "value": value} for value in segments],
+                                value=[],
+                                multi=True,
+                                placeholder="Tous",
+                            ),
+                        ),
+                        filter_group(
+                            "Canaux d'acquisition",
+                            dcc.Dropdown(
+                                id="channel-filter",
+                                options=[{"label": value, "value": value} for value in channels],
+                                value=[],
+                                multi=True,
+                                placeholder="Tous",
+                            ),
+                        ),
+                        filter_group(
+                            "Villes",
+                            dcc.Dropdown(
+                                id="city-filter",
+                                options=[{"label": value, "value": value} for value in cities],
+                                value=[],
+                                multi=True,
+                                placeholder="Toutes",
+                            ),
+                        ),
+                        filter_group(
+                            "Score RFM",
+                            dcc.RangeSlider(
+                                id="rfm-filter",
+                                min=rfm_min,
+                                max=rfm_max,
+                                step=1,
+                                value=[rfm_min, rfm_max],
+                                marks={rfm_min: str(rfm_min), rfm_max: str(rfm_max)},
+                                tooltip={"placement": "bottom", "always_visible": False},
+                            ),
+                        ),
+                        filter_group(
+                            "CA client",
+                            dcc.RangeSlider(
+                                id="revenue-filter",
+                                min=revenue_min,
+                                max=revenue_max,
+                                step=50,
+                                value=[revenue_min, revenue_max],
+                                marks={
+                                    revenue_min: f"{revenue_min} EUR",
+                                    revenue_max: f"{revenue_max} EUR",
+                                },
+                                tooltip={"placement": "bottom", "always_visible": False},
+                            ),
+                        ),
                     ],
                 ),
                 html.Section(
-                    className="decision-grid",
+                    className="main-board",
                     children=[
-                        html.Div(
-                            className="panel portfolio-panel",
+                        html.Section(
+                            className="kpi-grid",
                             children=[
-                                html.Div(
-                                    className="panel-heading",
-                                    children=[
-                                        html.Div([html.H2("Portefeuille clients"), html.P("Mix des segments et poids business.")]),
-                                        html.Span(id="portfolio-badge", className="status-badge"),
-                                    ],
+                                kpi_card("Clients", "kpi-clients", "Base filtree"),
+                                kpi_card("CA total", "kpi-revenue", "Valeur transactionnelle"),
+                                kpi_card("CA moyen/client", "kpi-average", "Monetary moyen"),
+                                kpi_card("Recence moyenne", "kpi-recency", "Dernier achat"),
+                            ],
+                        ),
+                        html.Section(
+                            className="balanced-grid top-analysis",
+                            children=[
+                                panel(
+                                    "Portefeuille clients",
+                                    "Clique sur un segment pour croiser le filtre.",
+                                    dcc.Graph(id="segment-chart", className="chart", config={"displayModeBar": False}),
                                 ),
-                                dcc.Graph(id="segment-chart", className="chart compact-chart", config={"displayModeBar": False}),
-                            ],
-                        ),
-                        html.Div(
-                            className="panel action-panel",
-                            children=[
-                                html.Div(
-                                    className="panel-heading",
-                                    children=[
-                                        html.Div([html.H2("Decision CRM"), html.P("Action recommandee pour la vue active.")]),
-                                    ],
+                                panel(
+                                    "Decision CRM",
+                                    "Synthese de la vue active.",
+                                    html.Div(id="activation-panel"),
+                                    "decision-panel",
                                 ),
-                                html.Div(id="activation-panel"),
                             ],
                         ),
-                    ],
-                ),
-                html.Section(
-                    className="analysis-grid",
-                    children=[
-                        chart_panel("Lecture RFM", "Frequence d'achat vs valeur client.", "rfm-scatter", "wide"),
-                        chart_panel("Revenu par canal", "Contribution des canaux d'acquisition.", "channel-chart", ""),
-                        chart_panel("Revenu par ville", "Top villes par chiffre d'affaires.", "city-chart", "wide"),
-                    ],
-                ),
-                html.Section(
-                    className="table-panel panel",
-                    children=[
-                        html.Div(
-                            className="panel-heading",
+                        html.Section(
+                            className="balanced-grid analysis-grid",
                             children=[
-                                html.Div([html.H2("Clients prioritaires"), html.P("Top clients a cibler selon score RFM et valeur.")]),
-                                html.Span("Top 8", className="status-badge muted"),
+                                panel(
+                                    "Lecture RFM",
+                                    "Frequence d'achat vs valeur client.",
+                                    dcc.Graph(id="rfm-scatter", className="chart", config={"displayModeBar": False}),
+                                ),
+                                panel(
+                                    "Canaux",
+                                    "Clique sur un canal pour filtrer.",
+                                    dcc.Graph(id="channel-chart", className="chart", config={"displayModeBar": False}),
+                                ),
+                                panel(
+                                    "Villes",
+                                    "Clique sur une ville pour filtrer.",
+                                    dcc.Graph(id="city-chart", className="chart", config={"displayModeBar": False}),
+                                ),
+                                panel(
+                                    "Clients prioritaires",
+                                    "Top clients selon RFM et valeur.",
+                                    html.Div(id="priority-table", className="priority-table"),
+                                    "table-panel",
+                                ),
                             ],
                         ),
-                        html.Div(id="priority-table", className="priority-table"),
                     ],
                 ),
             ],
@@ -199,11 +248,37 @@ app.layout = html.Div(
 
 
 @app.callback(
+    Output("cross-filter-store", "data"),
+    Input("segment-chart", "clickData"),
+    Input("channel-chart", "clickData"),
+    Input("city-chart", "clickData"),
+    Input("clear-cross-filter", "n_clicks"),
+    State("cross-filter-store", "data"),
+)
+def update_cross_filter(segment_click, channel_click, city_click, clear_clicks, current):
+    current = current or {"segment": None, "channel": None, "city": None}
+    trigger = ctx.triggered_id
+
+    if trigger == "clear-cross-filter":
+        return {"segment": None, "channel": None, "city": None}
+    if trigger == "segment-chart" and segment_click:
+        selected = segment_click["points"][0].get("y")
+        return toggle_value(current, "segment", selected)
+    if trigger == "channel-chart" and channel_click:
+        selected = channel_click["points"][0].get("label")
+        return toggle_value(current, "channel", selected)
+    if trigger == "city-chart" and city_click:
+        selected = city_click["points"][0].get("y")
+        return toggle_value(current, "city", selected)
+    return current
+
+
+@app.callback(
     Output("kpi-clients", "children"),
     Output("kpi-revenue", "children"),
     Output("kpi-average", "children"),
     Output("kpi-recency", "children"),
-    Output("portfolio-badge", "children"),
+    Output("active-filter-strip", "children"),
     Output("activation-panel", "children"),
     Output("segment-chart", "figure"),
     Output("city-chart", "figure"),
@@ -211,9 +286,22 @@ app.layout = html.Div(
     Output("rfm-scatter", "figure"),
     Output("priority-table", "children"),
     Input("segment-filter", "value"),
+    Input("channel-filter", "value"),
+    Input("city-filter", "value"),
+    Input("rfm-filter", "value"),
+    Input("revenue-filter", "value"),
+    Input("cross-filter-store", "data"),
 )
-def update_dashboard(selected_segment: str):
-    filtered = df if selected_segment == "all" else df[df["segment"] == selected_segment]
+def update_dashboard(selected_segments, selected_channels, selected_cities, rfm_range, revenue_range, cross_filter):
+    filtered = apply_filters(
+        df,
+        selected_segments or [],
+        selected_channels or [],
+        selected_cities or [],
+        rfm_range,
+        revenue_range,
+        cross_filter or {},
+    )
 
     clients = filtered["customer_id"].nunique()
     revenue = filtered["monetary_value"].sum()
@@ -223,21 +311,90 @@ def update_dashboard(selected_segment: str):
     revenue_share = revenue / total_revenue if total_revenue else 0
 
     segment_stats = build_segment_stats(filtered)
-    top_segment_name = segment_stats.iloc[0]["segment"] if not segment_stats.empty else "Aucun segment"
-    active_label = "Tous segments" if selected_segment == "all" else selected_segment
-    action = (
-        "Comparer les poches de valeur, puis concentrer les campagnes sur Champions, Fort potentiel et Clients a risque."
-        if selected_segment == "all"
-        else segment_actions.get(selected_segment, "Analyser le comportement du segment.")
+    revenue_ranked_segments = segment_stats.sort_values(["revenue", "customers"], ascending=False)
+    top_segment = revenue_ranked_segments.iloc[0]["segment"] if not revenue_ranked_segments.empty else "Aucun segment"
+    action = segment_actions.get(top_segment, "Comparer les segments pour arbitrer les efforts CRM.")
+
+    activation_panel = build_activation_panel(top_segment, action, revenue_share, clients, cross_filter or {})
+
+    segment_fig = build_segment_figure(segment_stats, (cross_filter or {}).get("segment"))
+    channel_fig = build_channel_figure(filtered, (cross_filter or {}).get("channel"))
+    city_fig = build_city_figure(filtered, (cross_filter or {}).get("city"))
+    scatter_fig = build_scatter_figure(filtered)
+
+    return (
+        str(clients),
+        format_eur(revenue),
+        format_eur(average),
+        f"{recency:.0f} j",
+        build_filter_chips(selected_segments or [], selected_channels or [], selected_cities or [], rfm_range, revenue_range, cross_filter or {}),
+        activation_panel,
+        segment_fig,
+        city_fig,
+        channel_fig,
+        scatter_fig,
+        build_priority_table(filtered),
     )
 
-    activation_panel = html.Div(
+
+def toggle_value(current: dict, key: str, value: str | None) -> dict:
+    updated = {**current}
+    updated[key] = None if current.get(key) == value else value
+    return updated
+
+
+def apply_filters(data, selected_segments, selected_channels, selected_cities, rfm_range, revenue_range, cross_filter):
+    filtered = data.copy()
+    if selected_segments:
+        filtered = filtered[filtered["segment"].isin(selected_segments)]
+    if selected_channels:
+        filtered = filtered[filtered["acquisition_channel"].isin(selected_channels)]
+    if selected_cities:
+        filtered = filtered[filtered["city"].isin(selected_cities)]
+    if rfm_range:
+        filtered = filtered[filtered["rfm_score"].between(rfm_range[0], rfm_range[1])]
+    if revenue_range:
+        filtered = filtered[filtered["monetary_value"].between(revenue_range[0], revenue_range[1])]
+    if cross_filter.get("segment"):
+        filtered = filtered[filtered["segment"] == cross_filter["segment"]]
+    if cross_filter.get("channel"):
+        filtered = filtered[filtered["acquisition_channel"] == cross_filter["channel"]]
+    if cross_filter.get("city"):
+        filtered = filtered[filtered["city"] == cross_filter["city"]]
+    return filtered
+
+
+def build_filter_chips(segments_selected, channels_selected, cities_selected, rfm_range, revenue_range, cross_filter):
+    chips = []
+    for value in segments_selected:
+        chips.append(chip(f"Segment: {value}"))
+    for value in channels_selected:
+        chips.append(chip(f"Canal: {value}"))
+    for value in cities_selected:
+        chips.append(chip(f"Ville: {value}"))
+    if rfm_range and (rfm_range[0] != rfm_min or rfm_range[1] != rfm_max):
+        chips.append(chip(f"RFM {rfm_range[0]}-{rfm_range[1]}"))
+    if revenue_range and (revenue_range[0] != revenue_min or revenue_range[1] != revenue_max):
+        chips.append(chip(f"CA {revenue_range[0]}-{revenue_range[1]} EUR"))
+    for key, label in [("segment", "Clic segment"), ("channel", "Clic canal"), ("city", "Clic ville")]:
+        if cross_filter.get(key):
+            chips.append(chip(f"{label}: {cross_filter[key]}", "cross"))
+    return chips or [html.Span("Aucun filtre actif", className="chip muted")]
+
+
+def chip(text: str, extra_class: str = ""):
+    return html.Span(text, className=f"chip {extra_class}".strip())
+
+
+def build_activation_panel(top_segment: str, action: str, revenue_share: float, clients: int, cross_filter: dict):
+    clicked = [value for value in cross_filter.values() if value]
+    return html.Div(
         className="activation-content",
         children=[
             html.Div(
                 className="activation-headline",
                 children=[
-                    html.Span(active_label),
+                    html.Span(top_segment),
                     html.Strong(action),
                 ],
             ),
@@ -245,37 +402,70 @@ def update_dashboard(selected_segment: str):
                 className="mini-metrics",
                 children=[
                     metric_item("Part CA", f"{revenue_share:.0%}"),
-                    metric_item("Segment dominant", top_segment_name),
                     metric_item("Clients filtres", str(clients)),
-                ],
-            ),
-            html.Div(
-                className="segment-list",
-                children=[
-                    segment_row(row.segment, int(row.customers), float(row.revenue), total_revenue)
-                    for row in segment_stats.itertuples(index=False)
+                    metric_item("Clic actif", " / ".join(clicked) if clicked else "Aucun"),
                 ],
             ),
         ],
     )
 
-    segment_fig = px.bar(
-        segment_stats.sort_values("customers"),
+
+def build_segment_stats(data: pd.DataFrame) -> pd.DataFrame:
+    if data.empty:
+        return pd.DataFrame({"segment": segments, "customers": [0] * len(segments), "revenue": [0] * len(segments)})
+    stats = (
+        data.groupby("segment", as_index=False)
+        .agg(customers=("customer_id", "nunique"), revenue=("monetary_value", "sum"))
+        .set_index("segment")
+        .reindex(segments, fill_value=0)
+        .reset_index()
+    )
+    return stats
+
+
+def build_segment_figure(stats: pd.DataFrame, selected_segment: str | None):
+    figure = px.bar(
+        stats,
         x="customers",
         y="segment",
         orientation="h",
         color="segment",
-        category_orders={"segment": segment_order},
+        category_orders={"segment": segments},
         color_discrete_map=segment_colors,
         text="customers",
         labels={"customers": "Clients", "segment": ""},
     )
+    style_figure(figure)
+    figure.update_layout(showlegend=False, height=310, clickmode="event+select")
+    figure.update_traces(textposition="outside", cliponaxis=False, marker_line_width=0)
+    dim_unselected(figure, selected_segment)
+    return figure
 
-    city_fig = px.bar(
-        filtered.groupby("city", as_index=False)
+
+def build_channel_figure(data: pd.DataFrame, selected_channel: str | None):
+    stats = data.groupby("acquisition_channel", as_index=False).agg(revenue=("monetary_value", "sum"))
+    figure = px.pie(
+        stats,
+        names="acquisition_channel",
+        values="revenue",
+        hole=0.58,
+        color_discrete_sequence=["#2563eb", "#149a7b", "#d97706", "#7c3aed", "#dc2626"],
+    )
+    style_figure(figure)
+    figure.update_layout(height=300, clickmode="event+select")
+    figure.update_traces(textposition="inside", textinfo="percent+label", pull=[0.05 if label == selected_channel else 0 for label in stats["acquisition_channel"]])
+    return figure
+
+
+def build_city_figure(data: pd.DataFrame, selected_city: str | None):
+    stats = (
+        data.groupby("city", as_index=False)
         .agg(revenue=("monetary_value", "sum"))
-        .sort_values("revenue", ascending=False)
-        .head(8),
+        .sort_values("revenue", ascending=True)
+        .tail(8)
+    )
+    figure = px.bar(
+        stats,
         x="revenue",
         y="city",
         orientation="h",
@@ -283,95 +473,54 @@ def update_dashboard(selected_segment: str):
         labels={"city": "", "revenue": "CA"},
         color_discrete_sequence=["#2563eb"],
     )
+    style_figure(figure)
+    figure.update_layout(showlegend=False, height=300, clickmode="event+select")
+    figure.update_traces(texttemplate="%{text:.0f} EUR", textposition="outside", cliponaxis=False)
+    if selected_city:
+        opacities = [1 if city == selected_city else 0.3 for city in stats["city"]]
+        figure.update_traces(marker_opacity=opacities)
+    return figure
 
-    channel_fig = px.pie(
-        filtered.groupby("acquisition_channel", as_index=False)
-        .agg(revenue=("monetary_value", "sum")),
-        names="acquisition_channel",
-        values="revenue",
-        hole=0.62,
-        color_discrete_sequence=["#2563eb", "#149a7b", "#d97706", "#7c3aed", "#dc2626"],
-    )
 
-    scatter_fig = px.scatter(
-        filtered,
+def build_scatter_figure(data: pd.DataFrame):
+    figure = px.scatter(
+        data,
         x="frequency_orders",
         y="monetary_value",
         size="recency_days",
         color="segment",
         color_discrete_map=segment_colors,
-        hover_data=["customer_id", "city", "rfm_score"],
-        labels={
-            "frequency_orders": "Commandes",
-            "monetary_value": "CA client",
-            "segment": "Segment",
-            "recency_days": "Recence",
-        },
+        hover_data=["customer_id", "city", "acquisition_channel", "rfm_score"],
+        labels={"frequency_orders": "Commandes", "monetary_value": "CA client", "segment": "Segment"},
     )
+    style_figure(figure)
+    figure.update_layout(height=300, legend=dict(orientation="h", y=-0.22, x=0))
+    figure.update_traces(marker=dict(line=dict(width=0.7, color="#ffffff"), opacity=0.82))
+    return figure
 
-    style_figures(segment_fig, city_fig, channel_fig, scatter_fig)
-    segment_fig.update_layout(showlegend=False, height=560)
-    city_fig.update_layout(showlegend=False, height=350)
-    city_fig.update_traces(texttemplate="%{text:.0f} EUR", textposition="outside", cliponaxis=False)
-    segment_fig.update_traces(textposition="outside", cliponaxis=False)
-    channel_fig.update_traces(textposition="inside", textinfo="percent+label")
-    scatter_fig.update_layout(height=360)
-    scatter_fig.update_traces(marker=dict(line=dict(width=0.7, color="#ffffff"), opacity=0.82))
 
-    table = build_priority_table(filtered)
-
-    return (
-        f"{clients}",
-        format_eur(revenue),
-        format_eur(average),
-        f"{recency:.0f} j",
-        f"{top_segment_name}",
-        activation_panel,
-        segment_fig,
-        city_fig,
-        channel_fig,
-        scatter_fig,
-        table,
+def style_figure(figure) -> None:
+    figure.update_layout(
+        template="plotly_white",
+        margin=dict(l=18, r=24, t=8, b=32),
+        legend_title_text="",
+        font=dict(family="Arial", size=12, color="#1f2937"),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
     )
+    figure.update_xaxes(showgrid=True, gridcolor="#edf1f5", zeroline=False)
+    figure.update_yaxes(showgrid=False, zeroline=False)
 
 
-def build_segment_stats(data: pd.DataFrame) -> pd.DataFrame:
-    return (
-        data.groupby("segment", as_index=False)
-        .agg(customers=("customer_id", "nunique"), revenue=("monetary_value", "sum"))
-        .assign(order=lambda values: values["segment"].map({name: index for index, name in enumerate(segment_order)}))
-        .sort_values(["customers", "revenue"], ascending=False)
-    )
-
-
-def style_figures(*figures) -> None:
-    for figure in figures:
-        figure.update_layout(
-            template="plotly_white",
-            margin=dict(l=20, r=28, t=8, b=30),
-            legend_title_text="",
-            font=dict(family="Arial", size=12, color="#1f2937"),
-            paper_bgcolor="#ffffff",
-            plot_bgcolor="#ffffff",
-        )
-        figure.update_xaxes(showgrid=True, gridcolor="#edf1f5", zeroline=False)
-        figure.update_yaxes(showgrid=False, zeroline=False)
+def dim_unselected(figure, selected_segment: str | None) -> None:
+    if not selected_segment:
+        return
+    for trace in figure.data:
+        trace.opacity = 1 if trace.name == selected_segment else 0.25
 
 
 def metric_item(label: str, value: str) -> html.Div:
     return html.Div([html.Span(label), html.Strong(value)], className="metric-item")
-
-
-def segment_row(segment: str, customers: int, revenue: float, total_revenue: float) -> html.Div:
-    share = revenue / total_revenue if total_revenue else 0
-    return html.Div(
-        className="segment-row",
-        children=[
-            html.Span(className="segment-dot", style={"backgroundColor": segment_colors.get(segment, "#64748b")}),
-            html.Div([html.Strong(segment), html.Small(f"{customers} clients")]),
-            html.Span(f"{share:.0%} CA", className="segment-share"),
-        ],
-    )
 
 
 def build_priority_table(data: pd.DataFrame) -> html.Table:
