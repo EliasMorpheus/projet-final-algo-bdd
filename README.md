@@ -148,12 +148,14 @@ Les resultats sont stockes dans `city_enrichment`.
 
 Le dashboard contient :
 
-- 3 KPIs : nombre de clients, chiffre d'affaires total, panier moyen client
+- 4 KPIs : nombre de clients, chiffre d'affaires total, panier moyen client, recence moyenne
 - graphique des clients par segment
 - graphique du chiffre d'affaires par ville
 - graphique du revenu par canal d'acquisition
+- graphique RFM frequence vs valeur client
 - filtre interactif par segment
 - callback Dash mettant a jour les KPIs et graphiques
+- tableau des clients prioritaires selon le score RFM
 
 ## Requetes SQL importantes
 
@@ -194,4 +196,3 @@ Le fichier `sql/04_views_functions.sql` contient :
 - [x] 2 graphiques minimum
 - [x] Filtre interactif
 - [x] Callback Dash
-

@@ -8,3 +8,4 @@ venv/
 .mysql-data/
 *.log
 *.pdf
+node_modules/
