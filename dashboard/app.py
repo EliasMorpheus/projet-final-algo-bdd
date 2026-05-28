@@ -46,14 +46,7 @@ def load_dashboard_data() -> pd.DataFrame:
 
 df = load_dashboard_data()
 segments = sorted(df["segment"].unique())
-segment_actions = {
-    "Champions": "Maintenir la relation VIP et proposer des offres exclusives.",
-    "Clients fideles": "Renforcer la fidelite avec des avantages recurrents.",
-    "Clients a risque": "Prioriser une campagne de reactivation personnalisee.",
-    "Nouveaux clients": "Declencher une sequence d'onboarding et un second achat.",
-    "Fort potentiel": "Proposer des bundles et recommandations premium.",
-    "A developper": "Tester des offres decouverte et contenus educatifs.",
-}
+
 segment_order = [
     "Champions",
     "Clients fideles",
@@ -63,35 +56,68 @@ segment_order = [
     "Clients a risque",
 ]
 segment_colors = {
-    "Champions": "#1f9d78",
-    "Clients fideles": "#2f6fed",
-    "Fort potentiel": "#8e5cf7",
-    "Nouveaux clients": "#f59e0b",
+    "Champions": "#149a7b",
+    "Clients fideles": "#2563eb",
+    "Fort potentiel": "#7c3aed",
+    "Nouveaux clients": "#d97706",
     "A developper": "#64748b",
     "Clients a risque": "#dc2626",
 }
+segment_actions = {
+    "Champions": "Programme VIP, ventes privees, parrainage et early access.",
+    "Clients fideles": "Avantages recurrents, cross-sell et contenu relationnel.",
+    "Clients a risque": "Reactivation rapide avec offre limitee et message personnalise.",
+    "Nouveaux clients": "Onboarding post-achat et incitation au deuxieme achat.",
+    "Fort potentiel": "Bundles premium, recommandations personnalisees et upsell.",
+    "A developper": "Nurturing, offres decouverte et tests de messages CRM.",
+}
+
+
+def kpi_card(label: str, value_id: str, caption: str) -> html.Div:
+    return html.Div(
+        className="kpi-card",
+        children=[
+            html.Span(label, className="kpi-label"),
+            html.Strong(id=value_id),
+            html.Small(caption),
+        ],
+    )
+
+
+def chart_panel(title: str, subtitle: str, graph_id: str, extra_class: str) -> html.Div:
+    return html.Div(
+        className=f"panel chart-panel {extra_class}".strip(),
+        children=[
+            html.Div(
+                className="panel-heading",
+                children=[html.Div([html.H2(title), html.P(subtitle)])],
+            ),
+            dcc.Graph(id=graph_id, className="chart", config={"displayModeBar": False}),
+        ],
+    )
+
 
 app = dash.Dash(__name__, assets_folder=str(ROOT_DIR / "assets"), eager_loading=True)
-app.title = "Dashboard RFM Marketing"
+app.title = "CRM RFM Command Center"
 
 app.layout = html.Div(
-    className="page",
+    className="page-shell",
     children=[
-        html.Div(
-            className="header",
+        html.Header(
+            className="topbar",
             children=[
                 html.Div(
-                    className="title-block",
+                    className="title-stack",
                     children=[
-                        html.Span("Dashboard marketing", className="eyebrow"),
+                        html.Span("CRM Performance Monitor", className="eyebrow"),
                         html.H1(["Segmentation client ", html.Span("e-commerce", className="nowrap")]),
-                        html.P("Pilotage RFM, valeur client et priorites d'activation commerciale"),
+                        html.P("Priorisation CRM a partir du scoring RFM, de la valeur client et des canaux d'acquisition."),
                     ],
                 ),
                 html.Div(
                     className="filter-card",
                     children=[
-                        html.Label("Segment"),
+                        html.Label("Vue segment"),
                         dcc.Dropdown(
                             id="segment-filter",
                             options=[{"label": "Tous les segments", "value": "all"}]
@@ -103,36 +129,69 @@ app.layout = html.Div(
                 ),
             ],
         ),
-        html.Div(id="insight-strip", className="insight-strip"),
-        html.Div(
-            className="kpi-grid",
+        html.Main(
+            className="content",
             children=[
-                html.Div([html.Span("Clients"), html.Strong(id="kpi-clients"), html.Small("Base filtree")], className="kpi"),
-                html.Div([html.Span("CA total"), html.Strong(id="kpi-revenue"), html.Small("Montant cumule")], className="kpi"),
-                html.Div([html.Span("Panier moyen client"), html.Strong(id="kpi-average"), html.Small("Valeur moyenne")], className="kpi"),
-                html.Div([html.Span("Recence moyenne"), html.Strong(id="kpi-recency"), html.Small("Jours depuis achat")], className="kpi"),
-            ],
-        ),
-        html.Div(
-            className="charts",
-            children=[
-                dcc.Graph(id="segment-chart", config={"displayModeBar": False}),
-                dcc.Graph(id="city-chart", config={"displayModeBar": False}),
-                dcc.Graph(id="channel-chart", config={"displayModeBar": False}),
-                dcc.Graph(id="rfm-scatter", config={"displayModeBar": False}),
-            ],
-        ),
-        html.Div(
-            className="table-panel",
-            children=[
-                html.Div(
-                    className="section-heading",
+                html.Section(
+                    className="kpi-grid",
                     children=[
-                        html.H2("Clients prioritaires"),
-                        html.P("Classement des clients a contacter en premier selon le score RFM."),
+                        kpi_card("Clients", "kpi-clients", "Base analysee"),
+                        kpi_card("CA total", "kpi-revenue", "Valeur transactionnelle"),
+                        kpi_card("CA moyen/client", "kpi-average", "Monetary moyen"),
+                        kpi_card("Recence moyenne", "kpi-recency", "Dernier achat"),
                     ],
                 ),
-                html.Div(id="priority-table", className="priority-table"),
+                html.Section(
+                    className="decision-grid",
+                    children=[
+                        html.Div(
+                            className="panel portfolio-panel",
+                            children=[
+                                html.Div(
+                                    className="panel-heading",
+                                    children=[
+                                        html.Div([html.H2("Portefeuille clients"), html.P("Mix des segments et poids business.")]),
+                                        html.Span(id="portfolio-badge", className="status-badge"),
+                                    ],
+                                ),
+                                dcc.Graph(id="segment-chart", className="chart compact-chart", config={"displayModeBar": False}),
+                            ],
+                        ),
+                        html.Div(
+                            className="panel action-panel",
+                            children=[
+                                html.Div(
+                                    className="panel-heading",
+                                    children=[
+                                        html.Div([html.H2("Decision CRM"), html.P("Action recommandee pour la vue active.")]),
+                                    ],
+                                ),
+                                html.Div(id="activation-panel"),
+                            ],
+                        ),
+                    ],
+                ),
+                html.Section(
+                    className="analysis-grid",
+                    children=[
+                        chart_panel("Lecture RFM", "Frequence d'achat vs valeur client.", "rfm-scatter", "wide"),
+                        chart_panel("Revenu par canal", "Contribution des canaux d'acquisition.", "channel-chart", ""),
+                        chart_panel("Revenu par ville", "Top villes par chiffre d'affaires.", "city-chart", "wide"),
+                    ],
+                ),
+                html.Section(
+                    className="table-panel panel",
+                    children=[
+                        html.Div(
+                            className="panel-heading",
+                            children=[
+                                html.Div([html.H2("Clients prioritaires"), html.P("Top clients a cibler selon score RFM et valeur.")]),
+                                html.Span("Top 8", className="status-badge muted"),
+                            ],
+                        ),
+                        html.Div(id="priority-table", className="priority-table"),
+                    ],
+                ),
             ],
         ),
     ],
@@ -144,7 +203,8 @@ app.layout = html.Div(
     Output("kpi-revenue", "children"),
     Output("kpi-average", "children"),
     Output("kpi-recency", "children"),
-    Output("insight-strip", "children"),
+    Output("portfolio-badge", "children"),
+    Output("activation-panel", "children"),
     Output("segment-chart", "figure"),
     Output("city-chart", "figure"),
     Output("channel-chart", "figure"),
@@ -159,47 +219,69 @@ def update_dashboard(selected_segment: str):
     revenue = filtered["monetary_value"].sum()
     average = revenue / clients if clients else 0
     recency = filtered["recency_days"].mean() if clients else 0
+    total_revenue = df["monetary_value"].sum()
+    revenue_share = revenue / total_revenue if total_revenue else 0
 
-    top_segment = (
-        filtered.groupby("segment", as_index=False)["customer_id"]
-        .nunique()
-        .sort_values("customer_id", ascending=False)
-        .head(1)
-    )
-    top_segment_name = top_segment.iloc[0]["segment"] if not top_segment.empty else "Aucun segment"
-    action_text = (
-        "Comparer les segments pour arbitrer les efforts CRM."
+    segment_stats = build_segment_stats(filtered)
+    top_segment_name = segment_stats.iloc[0]["segment"] if not segment_stats.empty else "Aucun segment"
+    active_label = "Tous segments" if selected_segment == "all" else selected_segment
+    action = (
+        "Comparer les poches de valeur, puis concentrer les campagnes sur Champions, Fort potentiel et Clients a risque."
         if selected_segment == "all"
         else segment_actions.get(selected_segment, "Analyser le comportement du segment.")
     )
-    insight = [
-        html.Strong(f"Segment dominant : {top_segment_name}"),
-        html.Span(action_text),
-    ]
+
+    activation_panel = html.Div(
+        className="activation-content",
+        children=[
+            html.Div(
+                className="activation-headline",
+                children=[
+                    html.Span(active_label),
+                    html.Strong(action),
+                ],
+            ),
+            html.Div(
+                className="mini-metrics",
+                children=[
+                    metric_item("Part CA", f"{revenue_share:.0%}"),
+                    metric_item("Segment dominant", top_segment_name),
+                    metric_item("Clients filtres", str(clients)),
+                ],
+            ),
+            html.Div(
+                className="segment-list",
+                children=[
+                    segment_row(row.segment, int(row.customers), float(row.revenue), total_revenue)
+                    for row in segment_stats.itertuples(index=False)
+                ],
+            ),
+        ],
+    )
 
     segment_fig = px.bar(
-        filtered.groupby("segment", as_index=False)
-        .agg(customers=("customer_id", "nunique"), revenue=("monetary_value", "sum"))
-        .sort_values("customers", ascending=False),
-        x="segment",
-        y="customers",
+        segment_stats.sort_values("customers"),
+        x="customers",
+        y="segment",
+        orientation="h",
         color="segment",
         category_orders={"segment": segment_order},
         color_discrete_map=segment_colors,
-        title="Volume client par segment",
-        labels={"segment": "", "customers": "Clients"},
+        text="customers",
+        labels={"customers": "Clients", "segment": ""},
     )
 
     city_fig = px.bar(
         filtered.groupby("city", as_index=False)
         .agg(revenue=("monetary_value", "sum"))
         .sort_values("revenue", ascending=False)
-        .head(10),
-        x="city",
-        y="revenue",
-        title="Chiffre d'affaires par ville",
+        .head(8),
+        x="revenue",
+        y="city",
+        orientation="h",
+        text="revenue",
         labels={"city": "", "revenue": "CA"},
-        color_discrete_sequence=["#2f6fed"],
+        color_discrete_sequence=["#2563eb"],
     )
 
     channel_fig = px.pie(
@@ -207,9 +289,8 @@ def update_dashboard(selected_segment: str):
         .agg(revenue=("monetary_value", "sum")),
         names="acquisition_channel",
         values="revenue",
-        title="Revenu par canal d'acquisition",
-        hole=0.45,
-        color_discrete_sequence=["#2f6fed", "#1f9d78", "#f59e0b", "#8e5cf7", "#dc2626"],
+        hole=0.62,
+        color_discrete_sequence=["#2563eb", "#149a7b", "#d97706", "#7c3aed", "#dc2626"],
     )
 
     scatter_fig = px.scatter(
@@ -220,7 +301,6 @@ def update_dashboard(selected_segment: str):
         color="segment",
         color_discrete_map=segment_colors,
         hover_data=["customer_id", "city", "rfm_score"],
-        title="Lecture RFM : frequence vs valeur",
         labels={
             "frequency_orders": "Commandes",
             "monetary_value": "CA client",
@@ -229,51 +309,24 @@ def update_dashboard(selected_segment: str):
         },
     )
 
-    for figure in (segment_fig, city_fig, channel_fig, scatter_fig):
-        figure.update_layout(
-            template="plotly_white",
-            margin=dict(l=36, r=24, t=58, b=42),
-            legend_title_text="",
-            font=dict(family="Arial", size=13),
-            title_font=dict(size=17),
-            paper_bgcolor="#ffffff",
-            plot_bgcolor="#ffffff",
-        )
-        figure.update_xaxes(showgrid=False)
-        figure.update_yaxes(gridcolor="#edf1f5")
-
-    segment_fig.update_layout(showlegend=False)
-    city_fig.update_layout(showlegend=False)
+    style_figures(segment_fig, city_fig, channel_fig, scatter_fig)
+    segment_fig.update_layout(showlegend=False, height=560)
+    city_fig.update_layout(showlegend=False, height=350)
+    city_fig.update_traces(texttemplate="%{text:.0f} EUR", textposition="outside", cliponaxis=False)
+    segment_fig.update_traces(textposition="outside", cliponaxis=False)
     channel_fig.update_traces(textposition="inside", textinfo="percent+label")
-    scatter_fig.update_traces(marker=dict(line=dict(width=0.5, color="#ffffff"), opacity=0.78))
+    scatter_fig.update_layout(height=360)
+    scatter_fig.update_traces(marker=dict(line=dict(width=0.7, color="#ffffff"), opacity=0.82))
 
-    table_data = (
-        filtered.sort_values(["rfm_score", "monetary_value"], ascending=False)
-        .head(8)
-        .assign(
-            monetary_value=lambda data: data["monetary_value"].map(lambda value: f"{value:,.0f} EUR".replace(",", " ")),
-            recency_days=lambda data: data["recency_days"].map(lambda value: f"{int(value)} j"),
-        )[
-            [
-                "customer_id",
-                "segment",
-                "city",
-                "rfm_score",
-                "monetary_value",
-                "frequency_orders",
-                "recency_days",
-            ]
-        ]
-        .to_dict("records")
-    )
-    table = build_priority_table(table_data)
+    table = build_priority_table(filtered)
 
     return (
         f"{clients}",
-        f"{revenue:,.0f} EUR".replace(",", " "),
-        f"{average:,.0f} EUR".replace(",", " "),
+        format_eur(revenue),
+        format_eur(average),
         f"{recency:.0f} j",
-        insight,
+        f"{top_segment_name}",
+        activation_panel,
         segment_fig,
         city_fig,
         channel_fig,
@@ -282,27 +335,74 @@ def update_dashboard(selected_segment: str):
     )
 
 
-def build_priority_table(rows: list[dict]) -> html.Table:
+def build_segment_stats(data: pd.DataFrame) -> pd.DataFrame:
+    return (
+        data.groupby("segment", as_index=False)
+        .agg(customers=("customer_id", "nunique"), revenue=("monetary_value", "sum"))
+        .assign(order=lambda values: values["segment"].map({name: index for index, name in enumerate(segment_order)}))
+        .sort_values(["customers", "revenue"], ascending=False)
+    )
+
+
+def style_figures(*figures) -> None:
+    for figure in figures:
+        figure.update_layout(
+            template="plotly_white",
+            margin=dict(l=20, r=28, t=8, b=30),
+            legend_title_text="",
+            font=dict(family="Arial", size=12, color="#1f2937"),
+            paper_bgcolor="#ffffff",
+            plot_bgcolor="#ffffff",
+        )
+        figure.update_xaxes(showgrid=True, gridcolor="#edf1f5", zeroline=False)
+        figure.update_yaxes(showgrid=False, zeroline=False)
+
+
+def metric_item(label: str, value: str) -> html.Div:
+    return html.Div([html.Span(label), html.Strong(value)], className="metric-item")
+
+
+def segment_row(segment: str, customers: int, revenue: float, total_revenue: float) -> html.Div:
+    share = revenue / total_revenue if total_revenue else 0
+    return html.Div(
+        className="segment-row",
+        children=[
+            html.Span(className="segment-dot", style={"backgroundColor": segment_colors.get(segment, "#64748b")}),
+            html.Div([html.Strong(segment), html.Small(f"{customers} clients")]),
+            html.Span(f"{share:.0%} CA", className="segment-share"),
+        ],
+    )
+
+
+def build_priority_table(data: pd.DataFrame) -> html.Table:
+    rows = (
+        data.sort_values(["rfm_score", "monetary_value"], ascending=False)
+        .head(8)
+        .assign(
+            monetary_value=lambda values: values["monetary_value"].map(format_eur),
+            recency_days=lambda values: values["recency_days"].map(lambda value: f"{int(value)} j"),
+        )[["customer_id", "segment", "city", "rfm_score", "monetary_value", "frequency_orders", "recency_days"]]
+        .to_dict("records")
+    )
     headers = [
-        ("customer_id", "Client ID"),
+        ("customer_id", "ID"),
         ("segment", "Segment"),
         ("city", "Ville"),
-        ("rfm_score", "Score RFM"),
+        ("rfm_score", "RFM"),
         ("monetary_value", "CA"),
-        ("frequency_orders", "Commandes"),
+        ("frequency_orders", "Cmd"),
         ("recency_days", "Recence"),
     ]
     return html.Table(
         [
             html.Thead(html.Tr([html.Th(label) for _, label in headers])),
-            html.Tbody(
-                [
-                    html.Tr([html.Td(row[column]) for column, _ in headers])
-                    for row in rows
-                ]
-            ),
+            html.Tbody([html.Tr([html.Td(row[column]) for column, _ in headers]) for row in rows]),
         ]
     )
+
+
+def format_eur(value: float) -> str:
+    return f"{value:,.0f} EUR".replace(",", " ")
 
 
 if __name__ == "__main__":
